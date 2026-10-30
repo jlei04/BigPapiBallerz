@@ -10,6 +10,7 @@
   h2 { margin-top: 28px; font-size: 1.1rem; }
   .sub { color: #666; margin-top: 0; }
   .tagline { margin: 0 0 8px; font-size: .9rem; font-weight: 700; letter-spacing: .08em; color: #e8590c; }
+  .note { margin: 16px 0 0; padding: 10px 12px; font-size: .85rem; line-height: 1.5; color: #555; background: #fff4e6; border-left: 3px solid #e8590c; border-radius: 4px; }
   .notice { margin: 4px 0 0; font-size: .85rem; color: #c92a2a; }
   .notice:empty { display: none; }
   .where { margin: 8px 0 0; font-size: .9rem; color: #555; line-height: 1.5; }
@@ -39,7 +40,6 @@
   <p class="sub" id="dateLabel"></p>
   <p class="notice" id="notice"></p>
   <p class="where">
-    <strong>Time:</strong> 7:00 - 9:30pm<br>
     <strong>Location:</strong> Seward Park High School<br>
     <strong>Address:</strong>
     <a href="https://www.google.com/maps/search/?api=1&query=350+Grand+St+New+York+NY+10002"
@@ -48,12 +48,20 @@
   <!-- Optional photo: upload a file named photo.jpg next to index.html. Hidden automatically if missing. -->
   <img class="photo" src="photo.jpg" alt="" onerror="this.remove()">
 
+  <p class="note">
+    This sign up sheet refreshes every week on Thursday midnight. Please make sure to sign up each week
+    so that we have headcount and maximize gym usage. Let's cap it at 15 people for the first week,
+    we can see how it vibes out.
+  </p>
+
   <form id="form">
     <input type="text" id="name" placeholder="Your name" maxlength="40" required autocomplete="off">
     <input type="email" id="email" placeholder="Your email" maxlength="100" required autocomplete="off">
     <button type="submit">I'm in</button>
     <p class="msg" id="msg"></p>
   </form>
+
+  <p class="notice" id="full" style="display:none">We're full this week (sign-ups are closed).</p>
 
   <h2>Playing this week (<span class="count" id="count">0</span>)</h2>
   <ul id="list"></ul>
@@ -91,6 +99,7 @@
 
   // Next Wednesday (today counts if it's Wednesday), in the visitor's local time
   // ====== NO-RUN DATES: add a line per skipped Wednesday ("YYYY-MM-DD": "reason") ======
+  const MAX_PLAYERS = 15;   // sign-up form closes at this many
   const NO_RUN = {
     "2026-11-11": "gym closed"
   };
@@ -226,7 +235,10 @@
       }
       list.appendChild(li);
     });
-    document.getElementById("count").textContent = weekDocs.length;
+    const full = weekDocs.length >= MAX_PLAYERS;
+    document.getElementById("form").style.display = full ? "none" : "flex";
+    document.getElementById("full").style.display = full ? "block" : "none";
+    document.getElementById("count").textContent = weekDocs.length + "/" + MAX_PLAYERS;
     document.getElementById("empty").style.display = weekDocs.length ? "none" : "block";
   }
 
