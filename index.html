@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wednesday Hoops</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; background: #fafafa; color: #222; }
+  h1 { margin-bottom: 4px; }
+  h2 { margin-top: 28px; font-size: 1.1rem; }
+  .sub { color: #666; margin-top: 0; }
+  form { display: flex; gap: 8px; margin: 16px 0; }
+  input[type=text] { flex: 1; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+  button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 6px; background: #e8590c; color: #fff; cursor: pointer; }
+  button.link { background: none; color: #c00; padding: 4px 8px; font-size: .85rem; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; }
+  li .name { flex: 1; }
+  label { font-size: .85rem; color: #555; display: flex; align-items: center; gap: 4px; }
+  .empty { color: #888; }
+  .count { font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>🏀 Wednesday Hoops</h1>
+  <p class="sub" id="dateLabel"></p>
+
+  <form id="form">
+    <input type="text" id="name" placeholder="Your name" maxlength="40" required autocomplete="off">
+    <button type="submit">I'm in</button>
+  </form>
+
+  <h2>Playing this week (<span class="count" id="count">0</span>)</h2>
+  <ul id="list"></ul>
+  <p class="empty" id="empty">No one yet. Be the first!</p>
+
+  <h2>Times showed up (all-time)</h2>
+  <ul id="tally"></ul>
+  <p class="empty" id="tallyEmpty">Nothing tracked yet. Check "Showed up" on game day.</p>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  // ====== PASTE YOUR FIREBASE CONFIG HERE (see README) ======
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    appId: "YOUR_APP_ID"
+  };
+  // ===========================================================
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const col = db.collection("signups");
+
+  // Next Wednesday (today counts if it's Wednesday), in the visitor's local time
+  function nextWednesday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7));
+    return d;
+  }
+  const run = nextWednesday();
+  const runKey = run.getFullYear() + "-" +
+    String(run.getMonth() + 1).padStart(2, "0") + "-" +
+    String(run.getDate()).padStart(2, "0");
+
+  document.getElementById("dateLabel").textContent =
+    run.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+
+  // Sign up
+  document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("name");
+    const name = input.value.trim();
+    if (!name) return;
+    await col.add({
+      name, runDate: runKey, attended: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = "";
+  });
+
+  // This week's list (live-updating)
+  col.where("runDate", "==", runKey).onSnapshot((snap) => {
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+    const docs = snap.docs.sort((a, b) =>
+      (a.data().createdAt?.seconds || 0) - (b.data().createdAt?.seconds || 0));
+    docs.forEach((doc) => {
+      const data = doc.data();
+      const li = document.createElement("li");
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "name";
+      nameEl.textContent = data.name;
+
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!data.attended;
+      cb.addEventListener("change", () => doc.ref.update({ attended: cb.checked }));
+      label.append(cb, "Showed up");
+
+      const del = document.createElement("button");
+      del.className = "link";
+      del.textContent = "Remove";
+      del.addEventListener("click", () => {
+        if (confirm("Remove " + data.name + "?")) doc.ref.delete();
+      });
+
+      li.append(nameEl, label, del);
+      list.appendChild(li);
+    });
+    document.getElementById("count").textContent = docs.length;
+    document.getElementById("empty").style.display = docs.length ? "none" : "block";
+  });
+
+  // All-time attendance tally (live-updating)
+  col.where("attended", "==", true).onSnapshot((snap) => {
+    const counts = {};
+    snap.docs.forEach((d) => {
+      const n = d.data().name.trim();
+      const key = n.toLowerCase();
+      counts[key] = counts[key] || { name: n, n: 0 };
+      counts[key].n++;
+    });
+    const rows = Object.values(counts).sort((a, b) => b.n - a.n);
+    const tally = document.getElementById("tally");
+    tally.innerHTML = "";
+    rows.forEach((r) => {
+      const li = document.createElement("li");
+      const nameEl = document.createElement("span");
+      nameEl.className = "name";
+      nameEl.textContent = r.name;
+      const c = document.createElement("span");
+      c.className = "count";
+      c.textContent = r.n;
+      li.append(nameEl, c);
+      tally.appendChild(li);
+    });
+    document.getElementById("tallyEmpty").style.display = rows.length ? "none" : "block";
+  });
+</script>
+</body>
+</html>
