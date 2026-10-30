@@ -60,7 +60,7 @@ service cloud.firestore {
 - Always shows the **next Wednesday** (today, if it's Wednesday). Thursday rolls over to the following week.
 - Visitors: sign up with name + email, see who's playing. Nothing else.
 - You: click **Admin sign in** at the bottom, then you see emails, a "Showed up" checkbox and Remove buttons.
-- Old weeks stay in the database. The "Times showed up" tally is all-time.
+- Old weeks stay in the database (view them in the Firestore console under `signups`).
 
 ## Notes
 - The Firebase config in `index.html` is safe to be public. The rules are the real security.

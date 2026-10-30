@@ -17,7 +17,7 @@
   ul { list-style: none; padding: 0; margin: 0; }
   li { display: flex; align-items: center; gap: 10px; padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; }
   li .who { flex: 1; display: flex; flex-direction: column; }
-  li .email { font-size: .8rem; color: #888; }
+  li .email, li .time { font-size: .8rem; color: #888; }
   label { font-size: .85rem; color: #555; display: flex; align-items: center; gap: 4px; }
   .empty { color: #888; }
   .count { font-weight: 600; }
@@ -42,9 +42,7 @@
   <ul id="list"></ul>
   <p class="empty" id="empty">No one yet. Be the first!</p>
 
-  <h2>Times showed up (all-time)</h2>
-  <ul id="tally"></ul>
-  <p class="empty" id="tallyEmpty">Nothing tracked yet.</p>
+  <p class="msg err" id="loadErr"></p>
 
   <footer>
     <button class="plain" id="authBtn">Admin sign in</button>
@@ -127,7 +125,11 @@
   signups.where("runDate", "==", runKey).onSnapshot((snap) => {
     weekDocs = snap.docs.sort((a, b) =>
       (a.data().createdAt?.seconds || 0) - (b.data().createdAt?.seconds || 0));
+    document.getElementById("loadErr").textContent = "";
     renderList();
+  }, (err) => {
+    console.error(err);
+    document.getElementById("loadErr").textContent = "Couldn't load the list: " + err.message;
   });
 
   function renderList() {
@@ -142,6 +144,13 @@
       const nameEl = document.createElement("span");
       nameEl.textContent = data.name;
       who.appendChild(nameEl);
+      const t = document.createElement("span");
+      t.className = "time";
+      t.textContent = data.createdAt
+        ? "Signed up " + data.createdAt.toDate().toLocaleString(undefined,
+            { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+        : "Signed up just now";
+      who.appendChild(t);
       if (isAdmin && emailById[doc.id]) {
         const em = document.createElement("span");
         em.className = "email";
@@ -180,32 +189,6 @@
     document.getElementById("count").textContent = weekDocs.length;
     document.getElementById("empty").style.display = weekDocs.length ? "none" : "block";
   }
-
-  // ---------- all-time tally ----------
-  signups.where("attended", "==", true).onSnapshot((snap) => {
-    const counts = {};
-    snap.docs.forEach((d) => {
-      const n = d.data().name.trim();
-      const key = n.toLowerCase();
-      counts[key] = counts[key] || { name: n, n: 0 };
-      counts[key].n++;
-    });
-    const rows = Object.values(counts).sort((a, b) => b.n - a.n);
-    const tally = document.getElementById("tally");
-    tally.innerHTML = "";
-    rows.forEach((r) => {
-      const li = document.createElement("li");
-      const nameEl = document.createElement("span");
-      nameEl.className = "who";
-      nameEl.textContent = r.name;
-      const c = document.createElement("span");
-      c.className = "count";
-      c.textContent = r.n;
-      li.append(nameEl, c);
-      tally.appendChild(li);
-    });
-    document.getElementById("tallyEmpty").style.display = rows.length ? "none" : "block";
-  });
 
   // ---------- admin auth ----------
   const authBtn = document.getElementById("authBtn");
