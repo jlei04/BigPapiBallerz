@@ -1,42 +1,68 @@
 # Wednesday Hoops sign-up sheet
 
 Single-page site (`index.html`) hosted on GitHub Pages, with Firebase Firestore as the shared database.
+Anyone can sign up (name + email). Only the admin (you) can remove names, mark attendance, and see emails.
 
-## 1. Create the database (free, ~5 min)
+## 1. Create the database (free)
 1. Go to https://console.firebase.google.com and click **Add project** (skip Google Analytics).
-2. In the project: **Build → Firestore Database → Create database**. Pick any region, start in **production mode**.
-3. Open the **Rules** tab, paste the contents below, and click **Publish**:
+2. **Build > Firestore Database > Create database**. Pick any region, start in **production mode**.
+3. **Project settings (gear icon) > General > Your apps > Web (`</>`)**. Register an app and copy the `firebaseConfig` values into the `firebaseConfig` block in `index.html`.
+
+## 2. Turn on admin sign-in
+1. **Build > Authentication > Get started > Sign-in method > Google > Enable** (pick a support email, Save).
+2. **Authentication > Settings > Authorized domains > Add domain**: add `<your-username>.github.io`.
+3. In `index.html`, set `ADMIN_EMAIL` to your Google email.
+
+## 3. Lock it down with security rules
+Firestore > **Rules** tab. Paste this, **replace `YOUR_EMAIL@gmail.com` with your Google email**, and click **Publish**:
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.token.email == 'YOUR_EMAIL@gmail.com'
+          && request.auth.token.email_verified == true;
+    }
+
+    // Public sign-up list: anyone can read and add; only admin can edit/delete
     match /signups/{id} {
       allow read: if true;
       allow create: if request.resource.data.name is string
                     && request.resource.data.name.size() > 0
                     && request.resource.data.name.size() <= 40
-                    && request.resource.data.runDate is string;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended']);
-      allow delete: if true;
+                    && request.resource.data.runDate is string
+                    && request.resource.data.attended == false;
+      allow update, delete: if isAdmin();
+    }
+
+    // Private emails: anyone can add, only admin can read/edit/delete
+    match /contacts/{id} {
+      allow create: if request.resource.data.email is string
+                    && request.resource.data.email.size() > 3
+                    && request.resource.data.email.size() <= 100
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() <= 40;
+      allow read, update, delete: if isAdmin();
     }
   }
 }
 ```
 
-4. **Project settings (gear icon) → General → Your apps → Web (`</>`)**. Register an app and copy the `firebaseConfig` values.
-5. Paste those values into the `firebaseConfig` block near the bottom of `index.html`.
-
-## 2. Host on GitHub Pages
-1. Create a new public repo and upload `index.html` and this README.
-2. **Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main` / `(root)`, Save.
-3. After a minute your site is live at `https://<your-username>.github.io/<repo-name>/`.
+## 4. Host on GitHub Pages
+1. Create a public repo and upload `index.html` and this README.
+2. **Settings > Pages**: Source = *Deploy from a branch*, Branch = `main` / `(root)`, Save.
+3. Site is live at `https://<your-username>.github.io/<repo-name>/`.
 
 ## How it behaves
-- Always shows the **next Wednesday** (today, if it's Wednesday). Thursday 11/5 rolls over to 11/11.
-- Anyone can sign up, tick "Showed up", or remove a name. No logins.
-- Old weeks stay in the database. The "Times showed up" section is the all-time attendance tally.
+- Always shows the **next Wednesday** (today, if it's Wednesday). Thursday rolls over to the following week.
+- Visitors: sign up with name + email, see who's playing. Nothing else.
+- You: click **Admin sign in** at the bottom, then you see emails, a "Showed up" checkbox and Remove buttons.
+- Old weeks stay in the database. The "Times showed up" tally is all-time.
 
 ## Notes
-- The Firebase config in `index.html` is safe to be public. The rules above are what control access.
-- Anyone with the link can edit, which is what you asked for. If a troll shows up, you can delete entries in the Firebase console.
+- The Firebase config in `index.html` is safe to be public. The rules are the real security.
+- Emails live in a separate `contacts` collection that only you can read. You can view or export them in the Firebase console.
+- Anyone could still add fake sign-ups (no login for visitors). You can remove them with your admin account.

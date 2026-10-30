@@ -9,16 +9,22 @@
   h1 { margin-bottom: 4px; }
   h2 { margin-top: 28px; font-size: 1.1rem; }
   .sub { color: #666; margin-top: 0; }
-  form { display: flex; gap: 8px; margin: 16px 0; }
-  input[type=text] { flex: 1; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+  form { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+  input[type=text], input[type=email] { padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
   button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 6px; background: #e8590c; color: #fff; cursor: pointer; }
   button.link { background: none; color: #c00; padding: 4px 8px; font-size: .85rem; }
+  button.plain { background: none; color: #888; font-size: .8rem; padding: 4px; text-decoration: underline; }
   ul { list-style: none; padding: 0; margin: 0; }
   li { display: flex; align-items: center; gap: 10px; padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; }
-  li .name { flex: 1; }
+  li .who { flex: 1; display: flex; flex-direction: column; }
+  li .email { font-size: .8rem; color: #888; }
   label { font-size: .85rem; color: #555; display: flex; align-items: center; gap: 4px; }
   .empty { color: #888; }
   .count { font-weight: 600; }
+  .badge { font-size: .8rem; color: #2b8a3e; }
+  .msg { color: #2b8a3e; min-height: 1.2em; margin: 0; }
+  .err { color: #c00; }
+  footer { margin-top: 32px; text-align: center; }
 </style>
 </head>
 <body>
@@ -27,7 +33,9 @@
 
   <form id="form">
     <input type="text" id="name" placeholder="Your name" maxlength="40" required autocomplete="off">
+    <input type="email" id="email" placeholder="Your email" maxlength="100" required autocomplete="off">
     <button type="submit">I'm in</button>
+    <p class="msg" id="msg"></p>
   </form>
 
   <h2>Playing this week (<span class="count" id="count">0</span>)</h2>
@@ -36,25 +44,33 @@
 
   <h2>Times showed up (all-time)</h2>
   <ul id="tally"></ul>
-  <p class="empty" id="tallyEmpty">Nothing tracked yet. Check "Showed up" on game day.</p>
+  <p class="empty" id="tallyEmpty">Nothing tracked yet.</p>
+
+  <footer>
+    <button class="plain" id="authBtn">Admin sign in</button>
+  </footer>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
   // ====== PASTE YOUR FIREBASE CONFIG HERE (see README) ======
   const firebaseConfig = {
-    apiKey: "AIzaSyD561cOnYnvedJXjm3cpH8GBos9bTp0pCA",
-    authDomain: "bigpapiballers.firebaseapp.com",
-    projectId: "bigpapiballers",
-    storageBucket: "bigpapiballers.firebasestorage.app",
-    messagingSenderId: "708128712850",
-    appId: "1:708128712850:web:450e53641729d7601a5e4b"
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    appId: "YOUR_APP_ID"
   };
+  // Your Google email. This only controls what the page SHOWS.
+  // The real lock is in the Firestore rules (see README).
+  const ADMIN_EMAIL = "YOUR_EMAIL@gmail.com";
   // ===========================================================
 
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
-  const col = db.collection("signups");
+  const auth = firebase.auth();
+  const signups = db.collection("signups");
+  const contacts = db.collection("contacts");
 
   // Next Wednesday (today counts if it's Wednesday), in the visitor's local time
   function nextWednesday() {
@@ -71,56 +87,100 @@
   document.getElementById("dateLabel").textContent =
     run.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-  // Sign up
+  // ---------- state ----------
+  let isAdmin = false;
+  let weekDocs = [];
+  let emailById = {};
+  let unsubContacts = null;
+
+  // ---------- sign up ----------
   document.getElementById("form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const input = document.getElementById("name");
-    const name = input.value.trim();
-    if (!name) return;
-    await col.add({
-      name, runDate: runKey, attended: false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    input.value = "";
+    const nameEl = document.getElementById("name");
+    const emailEl = document.getElementById("email");
+    const msg = document.getElementById("msg");
+    const name = nameEl.value.trim();
+    const email = emailEl.value.trim();
+    if (!name || !email) return;
+    msg.className = "msg";
+    try {
+      const ref = signups.doc();
+      const batch = db.batch();
+      batch.set(ref, {
+        name, runDate: runKey, attended: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      batch.set(contacts.doc(ref.id), { name, email, runDate: runKey });
+      await batch.commit();
+      nameEl.value = "";
+      emailEl.value = "";
+      msg.textContent = "You're in!";
+    } catch (err) {
+      msg.className = "msg err";
+      msg.textContent = "Something went wrong. Try again.";
+    }
   });
 
-  // This week's list (live-updating)
-  col.where("runDate", "==", runKey).onSnapshot((snap) => {
+  // ---------- this week's list ----------
+  signups.where("runDate", "==", runKey).onSnapshot((snap) => {
+    weekDocs = snap.docs.sort((a, b) =>
+      (a.data().createdAt?.seconds || 0) - (b.data().createdAt?.seconds || 0));
+    renderList();
+  });
+
+  function renderList() {
     const list = document.getElementById("list");
     list.innerHTML = "";
-    const docs = snap.docs.sort((a, b) =>
-      (a.data().createdAt?.seconds || 0) - (b.data().createdAt?.seconds || 0));
-    docs.forEach((doc) => {
+    weekDocs.forEach((doc) => {
       const data = doc.data();
       const li = document.createElement("li");
 
+      const who = document.createElement("span");
+      who.className = "who";
       const nameEl = document.createElement("span");
-      nameEl.className = "name";
       nameEl.textContent = data.name;
+      who.appendChild(nameEl);
+      if (isAdmin && emailById[doc.id]) {
+        const em = document.createElement("span");
+        em.className = "email";
+        em.textContent = emailById[doc.id];
+        who.appendChild(em);
+      }
+      li.appendChild(who);
 
-      const label = document.createElement("label");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!data.attended;
-      cb.addEventListener("change", () => doc.ref.update({ attended: cb.checked }));
-      label.append(cb, "Showed up");
+      if (isAdmin) {
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!data.attended;
+        cb.addEventListener("change", () => doc.ref.update({ attended: cb.checked }));
+        label.append(cb, "Showed up");
 
-      const del = document.createElement("button");
-      del.className = "link";
-      del.textContent = "Remove";
-      del.addEventListener("click", () => {
-        if (confirm("Remove " + data.name + "?")) doc.ref.delete();
-      });
-
-      li.append(nameEl, label, del);
+        const del = document.createElement("button");
+        del.className = "link";
+        del.textContent = "Remove";
+        del.addEventListener("click", async () => {
+          if (!confirm("Remove " + data.name + "?")) return;
+          const batch = db.batch();
+          batch.delete(doc.ref);
+          batch.delete(contacts.doc(doc.id));
+          await batch.commit();
+        });
+        li.append(label, del);
+      } else if (data.attended) {
+        const b = document.createElement("span");
+        b.className = "badge";
+        b.textContent = "✓ showed up";
+        li.appendChild(b);
+      }
       list.appendChild(li);
     });
-    document.getElementById("count").textContent = docs.length;
-    document.getElementById("empty").style.display = docs.length ? "none" : "block";
-  });
+    document.getElementById("count").textContent = weekDocs.length;
+    document.getElementById("empty").style.display = weekDocs.length ? "none" : "block";
+  }
 
-  // All-time attendance tally (live-updating)
-  col.where("attended", "==", true).onSnapshot((snap) => {
+  // ---------- all-time tally ----------
+  signups.where("attended", "==", true).onSnapshot((snap) => {
     const counts = {};
     snap.docs.forEach((d) => {
       const n = d.data().name.trim();
@@ -134,7 +194,7 @@
     rows.forEach((r) => {
       const li = document.createElement("li");
       const nameEl = document.createElement("span");
-      nameEl.className = "name";
+      nameEl.className = "who";
       nameEl.textContent = r.name;
       const c = document.createElement("span");
       c.className = "count";
@@ -143,6 +203,28 @@
       tally.appendChild(li);
     });
     document.getElementById("tallyEmpty").style.display = rows.length ? "none" : "block";
+  });
+
+  // ---------- admin auth ----------
+  const authBtn = document.getElementById("authBtn");
+  authBtn.addEventListener("click", () => {
+    if (auth.currentUser) auth.signOut();
+    else auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(() => {});
+  });
+
+  auth.onAuthStateChanged((user) => {
+    isAdmin = !!user && user.email === ADMIN_EMAIL;
+    authBtn.textContent = user ? "Sign out" : "Admin sign in";
+    if (unsubContacts) { unsubContacts(); unsubContacts = null; }
+    emailById = {};
+    if (isAdmin) {
+      unsubContacts = contacts.where("runDate", "==", runKey).onSnapshot((snap) => {
+        emailById = {};
+        snap.docs.forEach((d) => { emailById[d.id] = d.data().email; });
+        renderList();
+      });
+    }
+    renderList();
   });
 </script>
 </body>
