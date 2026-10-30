@@ -9,6 +9,10 @@
   h1 { margin-bottom: 4px; }
   h2 { margin-top: 28px; font-size: 1.1rem; }
   .sub { color: #666; margin-top: 0; }
+  .tagline { margin: 0 0 8px; font-size: .9rem; font-weight: 700; letter-spacing: .08em; color: #e8590c; }
+  .where { margin: 8px 0 0; font-size: .9rem; color: #555; line-height: 1.5; }
+  .where a { color: #555; }
+  .photo { display: block; width: 100%; max-height: 160px; object-fit: cover; border-radius: 8px; margin-top: 12px; }
   form { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
   input[type=text], input[type=email] { padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
   button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 6px; background: #e8590c; color: #fff; cursor: pointer; }
@@ -29,8 +33,16 @@
 </head>
 <body>
   <h1>🏀 Wednesday Hoops</h1>
-  <h1>💦 MY SHOTS WET 💦</h1>
+  <p class="tagline">💦 MY SHOTS WET 💦</p>
   <p class="sub" id="dateLabel"></p>
+  <p class="where">
+    <strong>Location:</strong> Seward Park High School<br>
+    <strong>Address:</strong>
+    <a href="https://www.google.com/maps/search/?api=1&query=350+Grand+St+New+York+NY+10002"
+       target="_blank" rel="noopener">350 Grand St New York NY 10002</a>
+  </p>
+  <!-- Optional photo: upload a file named photo.jpg next to index.html. Hidden automatically if missing. -->
+  <img class="photo" src="photo.jpg" alt="" onerror="this.remove()">
 
   <form id="form">
     <input type="text" id="name" placeholder="Your name" maxlength="40" required autocomplete="off">
