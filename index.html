@@ -10,6 +10,8 @@
   h2 { margin-top: 28px; font-size: 1.1rem; }
   .sub { color: #666; margin-top: 0; }
   .tagline { margin: 0 0 8px; font-size: .9rem; font-weight: 700; letter-spacing: .08em; color: #e8590c; }
+  .notice { margin: 4px 0 0; font-size: .85rem; color: #c92a2a; }
+  .notice:empty { display: none; }
   .where { margin: 8px 0 0; font-size: .9rem; color: #555; line-height: 1.5; }
   .where a { color: #555; }
   .photo { display: block; width: 100%; max-height: 160px; object-fit: cover; border-radius: 8px; margin-top: 12px; }
@@ -35,6 +37,7 @@
   <h1>🏀 Wednesday Hoops</h1>
   <p class="tagline">💦 MY SHOTS WET 💦</p>
   <p class="sub" id="dateLabel"></p>
+  <p class="notice" id="notice"></p>
   <p class="where">
     <strong>Time:</strong> 7:00 - 9:30pm<br>
     <strong>Location:</strong> Seward Park High School<br>
@@ -87,16 +90,39 @@
   const contacts = db.collection("contacts");
 
   // Next Wednesday (today counts if it's Wednesday), in the visitor's local time
-  function nextWednesday() {
+  // ====== NO-RUN DATES: add a line per skipped Wednesday ("YYYY-MM-DD": "reason") ======
+  const NO_RUN = {
+    "2026-11-11": "gym closed"
+  };
+  // ======================================================================================
+
+  function keyOf(d) {
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  // Next Wednesday that isn't in NO_RUN. Also returns any skipped dates so we can mention them.
+  function nextRun() {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7));
-    return d;
+    const skipped = [];
+    while (NO_RUN[keyOf(d)] !== undefined) {
+      skipped.push({ date: new Date(d), reason: NO_RUN[keyOf(d)] });
+      d.setDate(d.getDate() + 7);
+    }
+    return { run: d, skipped };
   }
-  const run = nextWednesday();
-  const runKey = run.getFullYear() + "-" +
-    String(run.getMonth() + 1).padStart(2, "0") + "-" +
-    String(run.getDate()).padStart(2, "0");
+  const { run, skipped } = nextRun();
+  const runKey = keyOf(run);
+
+  if (skipped.length) {
+    const s = skipped[0];
+    document.getElementById("notice").textContent =
+      "No run " + s.date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) +
+      (s.reason ? " (" + s.reason + ")" : "") + ".";
+  }
 
   document.getElementById("dateLabel").textContent =
     run.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
